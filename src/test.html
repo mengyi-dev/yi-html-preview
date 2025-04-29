@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Website</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0056b3; /* Blue heading */
+        }
+        p {
+            margin-bottom: 15px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #28a745; /* Green button */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        #message {
+            margin-top: 15px;
+            font-weight: bold;
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HTML Preview Test Page</h1>
+
+        <p>This is a paragraph to test basic text rendering and styling. If you see this text styled according to the internal CSS, the styles are working.</p>
+
+        <p>Below is an image loaded from an external source (placeholder.com):</p>
+        <img src="https://via.placeholder.com/600x200.png?text=Test+Image" alt="Placeholder Test Image">
+
+        <p>Click the button below to test JavaScript:</p>
+        <button id="testButton">Click Me!</button>
+        <div id="message"></div>
+
+    </div>
+
+    <script>
+        // Simple inline script
+        const button = document.getElementById('testButton');
+        const messageDiv = document.getElementById('message');
+
+        button.addEventListener('click', function() {
+            messageDiv.textContent = 'JavaScript is working! Button clicked at ' + new Date().toLocaleTimeString();
+            console.log('Test button clicked via inline script.');
+        });
+
+        console.log('Test page script loaded.');
+    </script>
+</body>
+</html>

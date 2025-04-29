@@ -7,9 +7,6 @@ let updateTimeout: NodeJS.Timeout | undefined;
 // Escapes characters problematic for embedding inside an HTML attribute value (like srcdoc="...")
 function escapeHtmlForAttributeValue(unsafe: string): string {
     if (typeof unsafe !== 'string') return '';
-    // Escape ampersand first, then double quotes. Less than/greater than are technically not required
-    // for attribute values but can sometimes be escaped for belt-and-braces safety.
-    // Sticking to the essentials: & and ".
     return unsafe
          .replace(/&/g, "&amp;")
          .replace(/"/g, "&quot;");
@@ -113,7 +110,7 @@ function getBaseHrefString(webview: vscode.Webview, documentUri: vscode.Uri): st
         const docDirUri = vscode.Uri.joinPath(documentUri, '..');
         const webviewUri = webview.asWebviewUri(docDirUri);
         const href = webviewUri.toString().endsWith('/') ? webviewUri.toString() : webviewUri.toString() + '/';
-        // No need to escape here, escaping happens when embedding in the attribute
+        // Base tag itself - no attribute escaping needed here yet
         return `<base href="${href}">`;
     } catch (e) {
         console.error("Error creating webview URI for base href:", e);
@@ -139,9 +136,7 @@ function injectBaseHref(rawHtml: string, baseHrefTag: string): string {
 function getWebviewHtml(webview: vscode.Webview, rawUserHtml: string, documentUri: vscode.Uri): string {
     const nonce = getNonce();
     const baseHrefTagString = getBaseHrefString(webview, documentUri);
-    // Inject base tag first
     const initialHtmlWithBase = injectBaseHref(rawUserHtml, baseHrefTagString);
-    // Escape *only* for embedding in the srcdoc ATTRIBUTE value
     const escapedForInitialSrcdocAttribute = escapeHtmlForAttributeValue(initialHtmlWithBase);
 
     const csp = [
@@ -154,19 +149,49 @@ function getWebviewHtml(webview: vscode.Webview, rawUserHtml: string, documentUr
         `connect-src 'none'`
     ].join('; ');
 
+    // Updated CSS with device frame styles and landscape dimensions
     const styles = `
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: var(--vscode-editor-background); color: var(--vscode-editor-foreground); font-family: var(--vscode-font-family, sans-serif); display: flex; flex-direction: column; }
-        .controls { padding: 5px 10px; background-color: var(--vscode-sideBar-background); border-bottom: 1px solid var(--vscode-sideBar-border); flex-shrink: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .controls { padding: 8px 15px; background-color: var(--vscode-sideBar-background); border-bottom: 1px solid var(--vscode-sideBar-border); flex-shrink: 0; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .controls label { font-size: 12px; margin-right: -5px; white-space: nowrap; }
         .controls button { padding: 4px 8px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; }
         .controls button:hover { background-color: var(--vscode-button-secondaryHoverBackground); }
         .controls button.active { background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-border, transparent); }
-        .controls label { font-size: 12px; margin-right: 5px; white-space: nowrap; }
-        #preview-container { flex-grow: 1; overflow: auto; padding: 15px; display: flex; justify-content: center; align-items: flex-start; background-color: var(--vscode-editorWidget-background); }
-        #preview-frame { border: 1px dashed var(--vscode-editorWidget-border, #454545); background-color: white; transition: width 0.25s ease-in-out, height 0.25s ease-in-out; transform-origin: top center; box-shadow: 0 4px 12px rgba(0,0,0,0.2); width: 100%; max-width: 1920px; height: 100%; }
-        #preview-frame.mobile { width: 375px; height: 667px; max-width: 375px; }
-        #preview-frame.tablet { width: 768px; height: 1024px; max-width: 768px;}
-        #preview-frame.laptop { width: 1366px; height: 768px; max-width: 1366px;}
-        #preview-frame.desktop { width: 100%; height: 100%; max-width: 1920px; }
+        .controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #preview-container { flex-grow: 1; overflow: auto; padding: 25px; display: flex; justify-content: center; align-items: flex-start; background-color: var(--vscode-editorWidget-background); }
+
+        /* Simple Device Frame Wrapper */
+        #iframe-wrapper {
+            flex-shrink: 0; /* Prevent shrinking in flex container */
+            border: 8px solid #444;
+            border-radius: 16px;
+            overflow: hidden; /* Clip iframe corners */
+            box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+            background: #444; /* Color behind iframe, visible with border-radius */
+            transition: width 0.3s ease-in-out, height 0.3s ease-in-out;
+            width: 100%; /* Default: Desktop */
+            height: 100%;
+        }
+        #preview-frame {
+            display: block; /* Remove potential inline spacing */
+            border: none;
+            background-color: white;
+            width: 100%; /* Iframe always fills wrapper */
+            height: 100%;
+        }
+
+        /* --- Size Presets (Applied to Wrapper) --- */
+        /* Mobile */
+        #iframe-wrapper.mobile { width: 375px; height: 667px; border-width: 6px; border-radius: 18px;}
+        #iframe-wrapper.mobile.landscape { width: 667px; height: 375px; }
+        /* Tablet */
+        #iframe-wrapper.tablet { width: 768px; height: 1024px; border-width: 10px; border-radius: 20px;}
+        #iframe-wrapper.tablet.landscape { width: 1024px; height: 768px; }
+        /* Laptop */
+        #iframe-wrapper.laptop { width: 1366px; height: 768px; border-width: 10px; border-radius: 12px;}
+        #iframe-wrapper.laptop.landscape { width: 768px; height: 1366px; } /* Note: Often laptops don't rotate, but we allow it */
+        /* Desktop (No fixed size on wrapper, relies on container) */
+        #iframe-wrapper.desktop { width: 100%; height: 100%; max-width: 1920px; border: none; border-radius: 0; box-shadow: none; background: transparent; }
     `;
 
     return `<!DOCTYPE html>
@@ -185,30 +210,33 @@ function getWebviewHtml(webview: vscode.Webview, rawUserHtml: string, documentUr
         <button data-size="tablet" title="Tablet (768x1024)">Tablet</button>
         <button data-size="laptop" title="Laptop (1366x768)">Laptop</button>
         <button data-size="desktop" class="active" title="Desktop (Resizable)">Desktop</button>
+        <span style="margin-left: 10px;"></span> <button id="toggleOrientation" title="Toggle Orientation (Portrait/Landscape)" disabled>🔄 Orientation</button>
     </div>
     <div id="preview-container">
-         <iframe id="preview-frame"
-                 class="desktop"
-                 sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-modals"
-                 srcdoc="${escapedForInitialSrcdocAttribute}">
-        </iframe>
+         <div id="iframe-wrapper" class="desktop">
+             <iframe id="preview-frame"
+                     sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-modals"
+                     srcdoc="${escapedForInitialSrcdocAttribute}">
+            </iframe>
+         </div>
     </div>
     <script nonce="${nonce}">
         (function() {
             const vscode = acquireVsCodeApi();
             const iframe = document.getElementById('preview-frame');
-            const buttons = document.querySelectorAll('.controls button');
+            const iframeWrapper = document.getElementById('iframe-wrapper'); // Get wrapper
+            const sizeButtons = document.querySelectorAll('.controls button[data-size]');
+            const orientationButton = document.getElementById('toggleOrientation');
             const container = document.getElementById('preview-container');
+
             let currentSize = 'desktop';
-            // Pass the raw base tag string (JSON.stringify handles escaping for JS string literal)
+            let isLandscape = false;
             const baseHrefTagString = ${JSON.stringify(baseHrefTagString)};
 
-            if (!iframe) {
-                console.error('Preview iframe not found!');
+            if (!iframe || !iframeWrapper || !orientationButton) {
+                console.error('Preview UI elements not found!');
                 return;
             }
-
-            // *** NO LONGER NEED escapeHtml function here for srcdoc ***
 
             // Helper function inside the script to inject base href (mirrors outer logic)
             function injectBaseHrefIntoString(rawHtml, baseTag) {
@@ -226,6 +254,13 @@ function getWebviewHtml(webview: vscode.Webview, rawUserHtml: string, documentUr
                  return baseTag + cleanHtml; // Fallback prepend
             }
 
+            function updateOrientationButtonState() {
+                orientationButton.disabled = (currentSize === 'desktop');
+                // Update button text/icon (optional)
+                // orientationButton.textContent = isLandscape ? '🔄 Landscape' : '🔄 Portrait';
+            }
+
+            // Listener for messages from the extension (e.g., HTML updates)
             window.addEventListener('message', event => {
                 const message = event.data;
                 switch (message.command) {
@@ -233,42 +268,63 @@ function getWebviewHtml(webview: vscode.Webview, rawUserHtml: string, documentUr
                         try {
                             const rawUpdateHtml = message.html;
                             const htmlWithBase = injectBaseHrefIntoString(rawUpdateHtml, baseHrefTagString);
-                            // *** Assign raw HTML directly to srcdoc property ***
+                            // Assign raw HTML directly to srcdoc property
                             iframe.srcdoc = htmlWithBase;
                         } catch (e) {
                              console.error("Error updating srcdoc:", e);
-                             // Assign simple error HTML directly
                              iframe.srcdoc = '<html><body>Error updating preview content. Check console.</body></html>';
                         }
                         break;
                  }
             });
 
-            buttons.forEach(button => {
+            // Add listeners to the screen size control buttons
+            sizeButtons.forEach(button => {
                 button.addEventListener('click', () => {
                     const size = button.getAttribute('data-size');
                     if (size && size !== currentSize) {
                         currentSize = size;
-                        buttons.forEach(btn => btn.classList.remove('active'));
+                        isLandscape = false; // Reset orientation when changing size
+                        sizeButtons.forEach(btn => btn.classList.remove('active'));
                         button.classList.add('active');
-                        iframe.classList.remove('mobile', 'tablet', 'laptop', 'desktop');
-                        iframe.classList.add(size);
 
+                        // Apply size class to wrapper, remove orientation class
+                        iframeWrapper.className = ' '; // Clear existing classes first
+                        iframeWrapper.classList.add(size);
+
+                        // Adjust container alignment
                         if (size === 'desktop') {
                             container.style.alignItems = 'stretch';
-                            iframe.style.height = '100%';
                         } else {
                             container.style.alignItems = 'flex-start';
                         }
+                        updateOrientationButtonState(); // Update button enabled state
                     }
                 });
             });
 
+             // Add listener for orientation button
+             orientationButton.addEventListener('click', () => {
+                if (currentSize === 'desktop') return; // Should be disabled, but double check
+
+                isLandscape = !isLandscape;
+                if (isLandscape) {
+                    iframeWrapper.classList.add('landscape');
+                } else {
+                    iframeWrapper.classList.remove('landscape');
+                }
+                updateOrientationButtonState(); // Update text/icon if needed
+            });
+
+
+            // Set initial container alignment and button state
             if (currentSize === 'desktop') {
                  container.style.alignItems = 'stretch';
             } else {
                  container.style.alignItems = 'flex-start';
             }
+            updateOrientationButtonState(); // Set initial button state
+
 
         }());
     </script>
@@ -276,6 +332,7 @@ function getWebviewHtml(webview: vscode.Webview, rawUserHtml: string, documentUr
 </html>`;
 }
 
+// Function to update webview content, either by resetting HTML or posting a message
 function updateWebviewContent(panel: vscode.WebviewPanel, document: vscode.TextDocument, forceHtmlReset: boolean) {
     const htmlContent = document.getText();
      if (forceHtmlReset || !panel.webview.html) {
